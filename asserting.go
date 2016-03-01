@@ -1,12 +1,26 @@
-package yatf
+package asserting
 
 import (
 	"net/http"
+	"reflect"
+	"strings"
 	"testing"
 )
 
 type TestCase struct {
 	T *testing.T
+}
+
+func Run(i interface{}) {
+	value := reflect.ValueOf(i)
+	testType := reflect.TypeOf(i)
+	for i := 0; i < testType.NumMethod(); i++ {
+		method := testType.Method(i)
+		if strings.HasPrefix(method.Name, "Test") {
+			finalMethod := value.MethodByName(method.Name)
+			finalMethod.Call(nil)
+		}
+	}
 }
 
 func (t TestCase) Assert(v bool) {
