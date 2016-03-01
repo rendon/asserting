@@ -4,15 +4,31 @@
 package asserting
 
 import (
+	"io/ioutil"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/gorilla/mux"
 )
 
 // TestCase describes a test case with various assertion methods.
 type TestCase struct {
-	T *testing.T
+	ResponseBody []byte
+	T            *testing.T
+	err          error
+	server       *httptest.Server
+	response     *http.Response
+}
+
+// NewTestCase returns an initialized TestCase.
+func NewTestCase(t *testing.T, handlers *mux.Router) *TestCase {
+	return &TestCase{
+		T:      t,
+		server: httptest.NewServer(handlers),
+	}
 }
 
 // Run expects a type that extends TestCase and calls all methods with prefix
@@ -36,6 +52,13 @@ func (t TestCase) Assert(v bool) {
 	}
 }
 
+// AssertNoError tests if err is not nil, i.e., no error has occurred.
+func (t TestCase) AssertNoError(err error) {
+	if err != nil {
+		t.T.Fatalf("Unexpected error: %s", err)
+	}
+}
+
 // AssertFalse tests v's falseness.
 func (t TestCase) AssertFalse(v bool) {
 	if v {
@@ -51,9 +74,15 @@ func (t TestCase) Assertf(ok bool, msg string) {
 }
 
 // AssertOK tests for HTTP OK code.
-func (t TestCase) AssertOK(code int) {
-	if code != http.StatusOK {
-		t.T.Fatalf("Expected 200, got %d", code)
+func (t TestCase) AssertOK() {
+	if t.err != nil {
+		t.T.Fatalf("Request error is not nil: %s", t.err)
+	}
+	if t.response == nil {
+		t.T.Fatalf("Response is nil")
+	}
+	if t.response.StatusCode != http.StatusOK {
+		t.T.Fatalf("Expected 200, got %d", t.response.StatusCode)
 	}
 }
 
@@ -61,5 +90,20 @@ func (t TestCase) AssertOK(code int) {
 func (t TestCase) AssertCreated(code int) {
 	if code != http.StatusCreated {
 		t.T.Fatalf("Expected 201, got %d", code)
+	}
+}
+
+// Get issues an HTTP GET request and keeps the response for later assertions.
+func (t *TestCase) Get(url string) {
+	if t.server == nil {
+		t.T.Fatalf("Uninitialized test server")
+	}
+	url = t.server.URL + url
+	resp, err := http.Get(url)
+	t.response = resp
+	t.err = err
+	if err == nil {
+		defer t.response.Body.Close()
+		t.ResponseBody, t.err = ioutil.ReadAll(t.response.Body)
 	}
 }
