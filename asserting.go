@@ -4,6 +4,8 @@
 package asserting
 
 import (
+	"bytes"
+	"encoding/json"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -93,6 +95,14 @@ func (t TestCase) AssertCreated(code int) {
 	}
 }
 
+// AssertStatus tests for some specific HTTP response code against the previous
+// HTTP request.
+func (t TestCase) AssertStatus(code int) {
+	if t.response.StatusCode != code {
+		t.T.Fatalf("Expected %v, got %d", code, t.response.StatusCode)
+	}
+}
+
 // Get issues an HTTP GET request and keeps the response for later assertions.
 func (t *TestCase) Get(url string) {
 	if t.server == nil {
@@ -105,5 +115,45 @@ func (t *TestCase) Get(url string) {
 	if err == nil {
 		defer t.response.Body.Close()
 		t.ResponseBody, t.err = ioutil.ReadAll(t.response.Body)
+	}
+}
+
+// Post issues an HTTP POST request and keeps the response for later assertions.
+func (t *TestCase) Post(url string, contentType string, body []byte) {
+	if t.server == nil {
+		t.T.Fatalf("Uninitialized test server")
+	}
+	url = t.server.URL + url
+	resp, err := http.Post(url, contentType, bytes.NewReader(body))
+	t.response = resp
+	t.err = err
+	if err == nil {
+		defer t.response.Body.Close()
+		t.ResponseBody, t.err = ioutil.ReadAll(t.response.Body)
+	}
+}
+
+// Unmarshal unmarshals response  body into and store it into  i, the test fails
+// if some error occurs.
+func (t *TestCase) Unmarshal(i interface{}) {
+	if t.response == nil {
+		t.T.Fatalf("Response is nil")
+	}
+	if err := json.Unmarshal(t.ResponseBody, i); err != nil {
+		t.T.Fatalf("Failed to unmarshal response body data: %s", err)
+	}
+}
+
+// AssertEqualInt tests if expected is equal to actual.
+func (t *TestCase) AssertEqualInt(expected, actual int) {
+	if expected != actual {
+		t.T.Fatalf("Expected %d, got %d", expected, actual)
+	}
+}
+
+// AssertEqualStr tests if expected is equal to actual.
+func (t *TestCase) AssertEqualStr(expected, actual string) {
+	if expected != actual {
+		t.T.Fatalf("Expected %s, got %s", expected, actual)
 	}
 }

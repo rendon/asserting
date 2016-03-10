@@ -19,7 +19,3 @@ func (t TestCase) TestDivision() {
 func (t TestCase) TestNonOKResponse() {
 	t.AssertCreated(201)
 }
-
-func (t TestCase) TestOKResponse() {
-	t.AssertOK(200)
-}
