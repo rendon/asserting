@@ -12,8 +12,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/gorilla/mux"
 )
 
 // TestCase describes a test case with various assertion methods.
@@ -26,7 +24,7 @@ type TestCase struct {
 }
 
 // NewTestCase returns an initialized TestCase.
-func NewTestCase(t *testing.T, handlers *mux.Router) *TestCase {
+func NewTestCase(t *testing.T, handlers http.Handler) *TestCase {
 	return &TestCase{
 		T:      t,
 		server: httptest.NewServer(handlers),
@@ -38,9 +36,25 @@ func NewTestCase(t *testing.T, handlers *mux.Router) *TestCase {
 func Run(i interface{}) {
 	value := reflect.ValueOf(i)
 	testType := reflect.TypeOf(i)
+	var be bool
+	var ba bool
+	for i := 0; i < testType.NumMethod(); i++ {
+		method := testType.Method(i)
+		if strings.HasPrefix(method.Name, "BeforeEach") {
+			be = true
+		} else if strings.HasPrefix(method.Name, "BeforeAll") {
+			ba = true
+		}
+	}
+	if ba {
+		value.MethodByName("BeforeAll").Call(nil)
+	}
 	for i := 0; i < testType.NumMethod(); i++ {
 		method := testType.Method(i)
 		if strings.HasPrefix(method.Name, "Test") {
+			if be {
+				value.MethodByName("BeforeEach").Call(nil)
+			}
 			finalMethod := value.MethodByName(method.Name)
 			finalMethod.Call(nil)
 		}
