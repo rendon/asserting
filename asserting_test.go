@@ -15,7 +15,3 @@ func (t TestCase) TestAddition() {
 func (t TestCase) TestDivision() {
 	t.AssertFalse(4 == 10/3)
 }
-
-func (t TestCase) TestNonOKResponse() {
-	t.AssertCreated(201)
-}

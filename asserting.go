@@ -6,12 +6,16 @@ package asserting
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
+	"unicode"
+	"unicode/utf8"
 )
 
 // TestCase describes a test case with various assertion methods.
@@ -23,12 +27,17 @@ type TestCase struct {
 	response     *http.Response
 }
 
-// NewTestCase returns an initialized TestCase.
-func NewTestCase(t *testing.T, handlers http.Handler) *TestCase {
+// NewWebTestCase returns an initialized TestCase for Web API testing.
+func NewWebTestCase(t *testing.T, handlers http.Handler) *TestCase {
 	return &TestCase{
 		T:      t,
 		server: httptest.NewServer(handlers),
 	}
+}
+
+// NewTestCase returns an initialized TestCase.
+func NewTestCase(t *testing.T) *TestCase {
+	return &TestCase{T: t}
 }
 
 // Run expects a type that extends TestCase and calls all methods with prefix
@@ -64,48 +73,49 @@ func Run(i interface{}) {
 // Assert tests v's truthiness.
 func (t TestCase) Assert(v bool) {
 	if !v {
-		t.T.Fatalf("Expected true, got false")
+		t.T.Fatalf("Expected true, got false [%s]", CallerInfo())
+	}
+}
+
+// AssertError tests that err is non-nil.
+func (t TestCase) AssertError(err error) {
+	if err == nil {
+		t.T.Fatalf("Expected error, got nil [%s]", CallerInfo())
 	}
 }
 
 // AssertNoError tests if err is not nil, i.e., no error has occurred.
 func (t TestCase) AssertNoError(err error) {
 	if err != nil {
-		t.T.Fatalf("Unexpected error: %s", err)
+		t.T.Fatalf("Unexpected error: %s [%s]", CallerInfo())
 	}
 }
 
 // AssertFalse tests v's falseness.
 func (t TestCase) AssertFalse(v bool) {
 	if v {
-		t.T.Fatalf("Expected false, got true")
+		t.T.Fatalf("Expected false, got true [%s]", CallerInfo())
 	}
 }
 
 // Assertf tests v's truthiness, shows msg in case of failure.
 func (t TestCase) Assertf(ok bool, msg string) {
 	if !ok {
-		t.T.Fatalf("Assertion failed: %s", msg)
+		t.T.Fatalf("Assertion failed: %s [%s]", msg, CallerInfo())
 	}
 }
 
 // AssertOK tests for HTTP OK code.
 func (t TestCase) AssertOK() {
 	if t.err != nil {
-		t.T.Fatalf("Request error is not nil: %s", t.err)
+		t.T.Fatalf("Request error is not nil: %s [%s]", t.err, CallerInfo())
 	}
 	if t.response == nil {
-		t.T.Fatalf("Response is nil")
+		t.T.Fatalf("Response is nil [%s]", CallerInfo())
 	}
 	if t.response.StatusCode != http.StatusOK {
-		t.T.Fatalf("Expected 200, got %d", t.response.StatusCode)
-	}
-}
-
-// AssertCreated tests for HTTP CREATED code.
-func (t TestCase) AssertCreated(code int) {
-	if code != http.StatusCreated {
-		t.T.Fatalf("Expected 201, got %d", code)
+		info := CallerInfo()
+		t.T.Fatalf("Expected 200, got %d [%s]", t.response.StatusCode, info)
 	}
 }
 
@@ -113,14 +123,15 @@ func (t TestCase) AssertCreated(code int) {
 // HTTP request.
 func (t TestCase) AssertStatus(code int) {
 	if t.response.StatusCode != code {
-		t.T.Fatalf("Expected %v, got %d", code, t.response.StatusCode)
+		i := CallerInfo()
+		t.T.Fatalf("Expected %v, got %d [%s]", code, t.response.StatusCode, i)
 	}
 }
 
 // Get issues an HTTP GET request and keeps the response for later assertions.
 func (t *TestCase) Get(url string) {
 	if t.server == nil {
-		t.T.Fatalf("Uninitialized test server")
+		t.T.Fatalf("Uninitialized test server [%s]", CallerInfo())
 	}
 	url = t.server.URL + url
 	resp, err := http.Get(url)
@@ -135,7 +146,7 @@ func (t *TestCase) Get(url string) {
 // Post issues an HTTP POST request and keeps the response for later assertions.
 func (t *TestCase) Post(url string, contentType string, body []byte) {
 	if t.server == nil {
-		t.T.Fatalf("Uninitialized test server")
+		t.T.Fatalf("Uninitialized test server [%s]", CallerInfo())
 	}
 	url = t.server.URL + url
 	resp, err := http.Post(url, contentType, bytes.NewReader(body))
@@ -151,23 +162,102 @@ func (t *TestCase) Post(url string, contentType string, body []byte) {
 // if some error occurs.
 func (t *TestCase) Unmarshal(i interface{}) {
 	if t.response == nil {
-		t.T.Fatalf("Response is nil")
+		t.T.Fatalf("Response is nil [%s]", CallerInfo())
 	}
 	if err := json.Unmarshal(t.ResponseBody, i); err != nil {
 		t.T.Fatalf("Failed to unmarshal response body data: %s", err)
 	}
 }
 
+// Marshal converts interface i to JSON, an error makes the test fail.
+func (t *TestCase) Marshal(i interface{}) []byte {
+	body, err := json.Marshal(i)
+	if err != nil {
+		t.T.Fatalf("Failed to marshal data: %s [%s]", err, CallerInfo())
+	}
+	return body
+}
+
 // AssertEqualInt tests if expected is equal to actual.
 func (t *TestCase) AssertEqualInt(expected, actual int) {
 	if expected != actual {
-		t.T.Fatalf("Expected %d, got %d", expected, actual)
+		t.T.Fatalf("Expected %d, got %d [%s]", expected, actual, CallerInfo())
 	}
 }
 
 // AssertEqualStr tests if expected is equal to actual.
 func (t *TestCase) AssertEqualStr(expected, actual string) {
 	if expected != actual {
-		t.T.Fatalf("Expected %s, got %s", expected, actual)
+		t.T.Fatalf("Expected %s, got %s [%s]", expected, actual, CallerInfo())
 	}
+}
+
+// Stolen from stretchr/testify with a few changes.
+// CallerInfo is necessary  because the assert functions use  the testing object
+// internally, causing  it to print the  file:line of the assert  method, rather
+// than where the problem actually occured in calling code.
+
+// CallerInfo returns an array of strings containing the file and line number
+// of each stack frame leading from the current test to the assert call that
+// failed.
+func CallerInfo() string {
+
+	pc := uintptr(0)
+	file := ""
+	line := 0
+	ok := false
+	name := ""
+
+	callers := []string{}
+	for i := 0; ; i++ {
+		pc, file, line, ok = runtime.Caller(i)
+		if !ok {
+			return ""
+		}
+
+		// This is a huge edge case, but it will panic if this is the case, see #180
+		if file == "<autogenerated>" {
+			break
+		}
+
+		parts := strings.Split(file, "/")
+		dir := parts[len(parts)-2]
+		file = parts[len(parts)-1]
+		if (dir != "assert" && dir != "mock" && dir != "require") || file == "mock_test.go" {
+			callers = append(callers, fmt.Sprintf("%s:%d", file, line))
+		}
+
+		f := runtime.FuncForPC(pc)
+		if f == nil {
+			break
+		}
+		name = f.Name()
+		// Drop the package
+		segments := strings.Split(name, ".")
+		name = segments[len(segments)-1]
+		if isTest(name, "Test") ||
+			isTest(name, "Benchmark") ||
+			isTest(name, "Example") {
+			break
+		}
+	}
+	if len(callers) > 0 {
+		return callers[len(callers)-1]
+	}
+	return ""
+}
+
+// Stolen from the `go test` tool.
+// isTest tells whether name looks like a test (or benchmark, according to prefix).
+// It is a Test (say) if there is a character after Test that is not a lower-case letter.
+// We don't want TesticularCancer.
+func isTest(name, prefix string) bool {
+	if !strings.HasPrefix(name, prefix) {
+		return false
+	}
+	if len(name) == len(prefix) { // "Test" is ok
+		return true
+	}
+	rune, _ := utf8.DecodeRuneInString(name[len(prefix):])
+	return !unicode.IsLower(rune)
 }
