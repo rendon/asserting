@@ -166,6 +166,27 @@ func (t *TestCase) Post(url string, contentType string, body []byte) {
 	}
 }
 
+// Put issues an HTTP PUT request and keeps the response for later assertions
+func (t *TestCase) Put(url string, contentType string, body []byte) {
+	if t.server == nil {
+		t.T.Fatalf("Uninitialized test server [%s]", CallerInfo())
+	}
+	url = t.server.URL + url
+	req, err := http.NewRequest("PUT", url, bytes.NewReader(body))
+	if err != nil {
+		t.T.Fatalf("Failed to create new request: %s", err)
+	}
+	req.Header.Set("Content-Type", contentType)
+
+	resp, err := http.DefaultClient.Do(req)
+	t.response = resp
+	t.err = err
+	if err == nil {
+		defer t.response.Body.Close()
+		t.ResponseBody, t.err = ioutil.ReadAll(t.response.Body)
+	}
+}
+
 // Unmarshal unmarshals response  body into and store it into  i, the test fails
 // if some error occurs.
 func (t *TestCase) Unmarshal(i interface{}) {
