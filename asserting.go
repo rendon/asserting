@@ -151,6 +151,25 @@ func (t *TestCase) Get(url string) {
 	}
 }
 
+// Delete issues an HTTP DELETE request and keeps the response for later assertions.
+func (t *TestCase) Delete(url string) {
+	if t.server == nil {
+		t.T.Fatalf("Uninitialized test server [%s]", CallerInfo())
+	}
+	url = t.server.URL + url
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		t.T.Fatalf("Couldn't create request: %q", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	t.response = resp
+	t.err = err
+	if err == nil {
+		defer t.response.Body.Close()
+		t.ResponseBody, t.err = ioutil.ReadAll(t.response.Body)
+	}
+}
+
 // Post issues an HTTP POST request and keeps the response for later assertions.
 func (t *TestCase) Post(url string, contentType string, body []byte) {
 	if t.server == nil {
@@ -227,6 +246,36 @@ func (t *TestCase) AssertEqualInt64(expected, actual int64) {
 func (t *TestCase) AssertEqualStr(expected, actual string) {
 	if expected != actual {
 		t.T.Fatalf("Expected %q, got %q [%s]", expected, actual, CallerInfo())
+	}
+}
+
+// AssertContainsStr tests if str contains substr.
+func (t *TestCase) AssertContainsStr(str, substr string) {
+	if !strings.Contains(str, substr) {
+		t.T.Fatalf("Expected %q to contain %q", str, substr)
+	}
+}
+
+func containsStringElement(elements []string, e string) bool {
+	for _, a := range elements {
+		if a == e {
+			return true
+		}
+	}
+	return false
+}
+
+// AssertContainsStringElement tests if elements contains e
+func (t *TestCase) AssertContainsStringElement(elements []string, e string) {
+	if !containsStringElement(elements, e) {
+		t.T.Fatalf("Expected %v to contain %s", elements, e)
+	}
+}
+
+// AssertContainsNoStringElement tests if elements contains e
+func (t *TestCase) AssertContainsNoStringElement(elements []string, e string) {
+	if containsStringElement(elements, e) {
+		t.T.Fatalf("Expected %v NOT to contain %s", elements, e)
 	}
 }
 
