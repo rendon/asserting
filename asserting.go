@@ -350,3 +350,8 @@ func isTest(name, prefix string) bool {
 	rune, _ := utf8.DecodeRuneInString(name[len(prefix):])
 	return !unicode.IsLower(rune)
 }
+
+// Fails test case with error message
+func (t TestCase) Fail(message string) {
+    t.T.Error(message)
+}
